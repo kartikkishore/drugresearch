@@ -1,0 +1,7 @@
+    try:
+        listLevel1 = []
+        for i in range(1, 30):
+            xp = '//*[@id="content"]/p[2]/b[' + str(i) + ']/a'
+            listLevel1.append(driver.find_element_by_xpath(xp).text)
+    except selenium.common.exceptions.NoSuchElementException:
+        pass
