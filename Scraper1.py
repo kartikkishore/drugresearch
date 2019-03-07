@@ -99,7 +99,7 @@ def fda():
             level.append(driver.find_element_by_css_selector(
                 '#mp-pusher > div > div > div > div > div.row.content > div > table > tbody').text.split('\n'))
         level = [item for sublist in level for item in sublist]
-        # The list Level now contains every drug name with letter 'A'
+        # The list Level now contains every drug name with current letter eg: 'A'
         for drug in level:
             # Search for specific drug from level list
             driver.get('https://www.accessdata.fda.gov/scripts/cder/daf')
@@ -111,7 +111,7 @@ def fda():
             # View results - can be segregated into specific product search outcome, eg: AUGMENTIN '875'
             # Or A-HYDROCORT searches which list down a number of combinations.
             if 'Marketing' in driver.page_source:
-                # Directly extracting information
+                # Directly extracting information from target page
                 FDAinfo.append(driver.find_element_by_xpath('//*[@id="exampleProd"]/tbody').text)
             else:
                 # Iterating through each of the subcategories and opening one-by-one to extract information
@@ -127,10 +127,64 @@ def fda():
                     driver.find_element_by_link_text(drug).click()
                     time.sleep(2)
                     driver.find_element_by_xpath('//*[@id="drugName1"]/li[' + str(subDrugsCounter) + ']/a').click()
-                    FDAinfo.append(driver.find_element_by_xpath('//*[@id="exampleProd"]/tbody').text)
+                    FDAinfo.append(driver.find_element_by_xpath('//*[@id="exampleProd"]/tbody').text.split('\n'))
+            # Logging for error checking
+            print(drug, FDAinfo, '\n') if DEBUG == True else None
+    driver.close()
+    return FDAinfo
+
+
+def drugs():
+    drugsInfo = []
+    drugIndexLinks = []
+    drugView = []
+    chromeOptions = Options()
+    chromeOptions.add_experimental_option("detach", True)
+    driver = webdriver.Chrome(executable_path='./webdrivers/chromedriver')
+    # Loop to find all drug names as per indexed pages
+    for letter in ['a']:
+        driver.get('https://www.drugs.com/alpha/' + letter + '.html')
+        # Trying to find active html references for redirection
+        topList = driver.find_element_by_class_name('ddc-paging')
+        links = [item.get_attribute('href') for item in topList.find_elements_by_tag_name('a')]
+        print(links) if DEBUG == True else None
+        drugIndexLinks.append(links)
+
+    # Now the list: drugIndexLinks has all the available link combinations, we can access them directly and extract data
+    drugIndexLinks = [item for sublist in drugIndexLinks for item in sublist]
+
+    for link in drugIndexLinks:
+        driver.get(link)
+        drugTable = driver.find_element_by_css_selector('#content > div.contentBox > ul')
+        eachDrugLink = [item.get_attribute('href') for item in drugTable.find_elements_by_tag_name('a')]
+        print(eachDrugLink) if DEBUG == True else None
+        drugView.append(eachDrugLink)
+
+    # Now the list: drugView has all the drug page links
+    drugView = [item for sublist in drugView for item in sublist]
+
+    for link in drugView:
+        driver.get(link)
+        try:
+            # Pronunciation Available
+            name = driver.find_element_by_class_name('pronounce-title').text
+        except Exception:
+            # Pronunciation Unavailable
+            name = driver.find_element_by_css_selector('#content > div.contentBox > h1').text
+        try:
+            # Subtitle available having brand name and information
+            text = driver.find_element_by_class_name('drug-subtitle').text.split('\n')
+        except Exception:
+            # Information Unavailable, leaving it as blank
+            text = []
+        drugsInfo.append([name, text])
+    return drugsInfo
 
 
 if __name__ == '__main__':
     # print(atc())
     # print('ATC Success')
-    fda()
+    # print(fda())
+    # print('FDA Success')
+    # print(drugs())
+    # print('drugs.com Success')
