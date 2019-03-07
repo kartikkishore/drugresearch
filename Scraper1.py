@@ -186,5 +186,5 @@ if __name__ == '__main__':
     # print('ATC Success')
     # print(fda())
     # print('FDA Success')
-    # print(drugs())
+    print(drugs())
     # print('drugs.com Success')
