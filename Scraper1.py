@@ -99,7 +99,6 @@ def fda():
             level.append(driver.find_element_by_css_selector(
                 '#mp-pusher > div > div > div > div > div.row.content > div > table > tbody').text.split('\n'))
         level = [item for sublist in level for item in sublist]
-        level[0] = 'AUGMENTIN \'875\''
         # The list Level now contains every drug name with letter 'A'
         for drug in level:
             # Search for specific drug from level list
@@ -109,10 +108,13 @@ def fda():
             driver.find_element_by_css_selector('#DrugNameform > div:nth-child(2) > button:nth-child(1)').click()
             time.sleep(1)
 
-            # View results
+            # View results - can be segregated into specific product search outcome, eg: AUGMENTIN '875'
+            # Or A-HYDROCORT searches which list down a number of combinations.
             if 'Marketing' in driver.page_source:
+                # Directly extracting information
                 FDAinfo.append(driver.find_element_by_xpath('//*[@id="exampleProd"]/tbody').text)
             else:
+                # Iterating through each of the subcategories and opening one-by-one to extract information
                 driver.find_element_by_link_text(drug).click()
                 time.sleep(2)
                 subcategories = len(driver.find_element_by_id('drugName1').text.split('\n'))
