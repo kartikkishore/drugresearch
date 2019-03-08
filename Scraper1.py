@@ -1,15 +1,13 @@
-from selenium import webdriver
-
-from selenium.webdriver.chrome.options import Options
-
-from selenium.webdriver.common.by import By
-
-from selenium.webdriver.support import expected_conditions
-from selenium.webdriver.support.ui import WebDriverWait
-
+import datetime
 import string
 import time
+
 import pandas as pd
+from selenium import webdriver
+from selenium.webdriver.chrome.options import Options
+from selenium.webdriver.common.by import By
+from selenium.webdriver.support import expected_conditions
+from selenium.webdriver.support.ui import WebDriverWait
 
 DEBUG = False
 
@@ -200,7 +198,7 @@ def drugs():
     return drugsInfo
 
 
-def chembl():
+def chembl(ATCData):
     chromeOptions = Options()
     chromeOptions.add_experimental_option("detach", True)
     driver = webdriver.Chrome(executable_path='./webdrivers/chromedriver', options=chromeOptions)
@@ -230,4 +228,4 @@ def chembl():
 if __name__ == '__main__':
     array = atc()
     df = pd.DataFrame.from_records(array, columns=['ATC code', 'Name', 'DDD', 'U', 'Adm.R', 'Note'])
-    df.to_csv('ATC_dump_8March2019.csv', index=None)
+    df.to_csv('ATC dump' + str(datetime.datetime.now().strftime('%Y-%m-%d')) + '.csv', index=None)
