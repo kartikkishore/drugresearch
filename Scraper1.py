@@ -1,7 +1,15 @@
 from selenium import webdriver
+
 from selenium.webdriver.chrome.options import Options
+
+from selenium.webdriver.common.by import By
+
+from selenium.webdriver.support import expected_conditions
+from selenium.webdriver.support.ui import WebDriverWait
+
 import string
 import time
+import pandas as pd
 
 DEBUG = False
 
@@ -14,7 +22,7 @@ def atc():
     driver = webdriver.Chrome(executable_path='./webdrivers/chromedriver', options=chromeOptions)
 
     # Insert loop for searching with all alphabets here
-    for letter in string.ascii_uppercase:
+    for letter in ['A']:
         alphabet = letter
         driver.get('https://www.whocc.no/atc_ddd_index/')
         searchBox = driver.find_element_by_xpath('//*[@id="content"]/form/table/tbody/tr/td[1]/input')
@@ -65,15 +73,24 @@ def atc():
                         # Fourth level Scraping
                         text4 = []
                         if driver.page_source.__contains__('<td>Adm.R</td>'):
-                            text4 = driver.find_element_by_xpath('//*[@id="content"]/ul/table/tbody').text.split('\n')
-
-                            # Removing unnecessary rows
-                            del text4[0]
-                            text4 = [item.strip() for item in text4]
-
-                            # Logging
-                            print('Fourth level: ', len(text4), text4) if DEBUG == True else None
-
+                            tableBody = driver.find_element_by_xpath('//*[@id="content"]/ul/table/tbody')
+                            rowOfDetails = tableBody.find_elements_by_tag_name('tr')
+                            c1 = c2 = 0
+                            for element in rowOfDetails:
+                                tempRow = [item.strip() for item in element.text.split('  ')]
+                                print(len(tempRow), tempRow)
+                                # Swapping & shifting logic
+                                if len(tempRow) == 5 or len(tempRow) == 6:
+                                    c1, c2 = tempRow[0:2]
+                                if len(tempRow) == 3:
+                                    a, b, c = tempRow[0:3]
+                                    tempRow = [c1, c2, a, b, c]
+                                if len(tempRow) == 4:
+                                    a, b, c, d = tempRow[0:4]
+                                    tempRow = [c1, c2, a, b, c, d]
+                                text4.append(tempRow) if 'ATC c' not in element.text else None
+                                # Logging
+                                print(text4) if DEBUG == True else None
                             # Storing data
                             ATCinfo.append(text4)
                         else:
@@ -81,6 +98,8 @@ def atc():
         except(Exception):
             print('Error in ', letter, ', No data found')
     driver.close()
+    # Congregating
+    ATCinfo = [item for sublist in ATCinfo for item in sublist]
     return ATCinfo
 
 
@@ -140,7 +159,7 @@ def drugs():
     drugView = []
     chromeOptions = Options()
     chromeOptions.add_experimental_option("detach", True)
-    driver = webdriver.Chrome(executable_path='./webdrivers/chromedriver')
+    driver = webdriver.Chrome(executable_path='./webdrivers/chromedriver', options=chromeOptions)
     # Loop to find all drug names as per indexed pages
     for letter in ['a']:
         driver.get('https://www.drugs.com/alpha/' + letter + '.html')
@@ -181,10 +200,34 @@ def drugs():
     return drugsInfo
 
 
+def chembl():
+    chromeOptions = Options()
+    chromeOptions.add_experimental_option("detach", True)
+    driver = webdriver.Chrome(executable_path='./webdrivers/chromedriver', options=chromeOptions)
+    wait = WebDriverWait(driver, 200)
+    driver.get('https://www.ebi.ac.uk/chembl/')
+    time.sleep(2)
+    driver.find_element_by_id('keyword').clear()
+    searchBox = driver.find_element_by_id('keyword')
+    searchBox.send_keys('A-HYDROCORT')
+    driver.find_element_by_css_selector('#compound_button > span > span > span:nth-child(1)').click()
+    try:
+        wait.until(expected_conditions.visibility_of_element_located((By.ID, 'bodyHeaderTitle')))
+        if '0 Hits' in driver.find_element_by_id('bodyHeaderTitle').text:
+            print('No result found for the compound:') if DEBUG == True else None
+        else:
+            time.sleep(2)
+            table = driver.find_element_by_id('example')
+            linksToChemical = [item.get_attribute('href') for item in table.find_elements_by_tag_name('a')]
+            print(linksToChemical) if DEBUG == True else None
+            for link in linksToChemical:
+                driver.get(link)
+                print(driver.find_element_by_class_name('contenttable_lmenu').text)
+    except Exception:
+        print('Page loading issue') if DEBUG == True else None
+
+
 if __name__ == '__main__':
-    # print(atc())
-    # print('ATC Success')
-    # print(fda())
-    # print('FDA Success')
-    print(drugs())
-    # print('drugs.com Success')
+    array = atc()
+    df = pd.DataFrame.from_records(array, columns=['ATC code', 'Name', 'DDD', 'U', 'Adm.R', 'Note'])
+    df.to_csv('ATC_dump_8March2019.csv', index=None)
