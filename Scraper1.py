@@ -1,6 +1,7 @@
 import datetime
 import string
 import time
+from timeit import default_timer as timer
 
 import pandas as pd
 from selenium import webdriver
@@ -13,14 +14,15 @@ DEBUG = False
 
 
 def atc():
+    ATCrefDict = {}
     ATCinfo = []
     # Configure chrome in detach mode to persist chrome window
     chromeOptions = Options()
     chromeOptions.add_experimental_option("detach", True)
-    driver = webdriver.Chrome(executable_path='./webdrivers/chromedriver', options=chromeOptions)
+    driver = webdriver.Chrome(executable_path='./webdrivers/chromedriver')
 
     # Insert loop for searching with all alphabets here
-    for letter in ['A']:
+    for letter in ['B']:
         alphabet = letter
         driver.get('https://www.whocc.no/atc_ddd_index/')
         searchBox = driver.find_element_by_xpath('//*[@id="content"]/form/table/tbody/tr/td[1]/input')
@@ -34,6 +36,9 @@ def atc():
             del text[0:2]
             del text[-1]
             firstCodes = [item[0:3] for item in text]
+
+            # Updating Level 1 code & meaning in dictionary: ATCrefDict
+            ATCrefDict = {item[0:3]: item[4:].strip() for item in text}
 
             # Logging
             print('First Level: ', len(firstCodes), firstCodes, '\n') if DEBUG == True else None
@@ -49,6 +54,9 @@ def atc():
                 del text2[0]
                 secondCodes = [item.split(' ')[0] for item in text2]
 
+                # Updating Level 2 code & meaning in dictionary: ATCrefDict
+                ATCrefDict = {**ATCrefDict, **{item.split(' ')[0]: item[item.index(' ') + 1:] for item in text2}}
+
                 # Logging
                 print('Second Level: ', len(secondCodes), secondCodes, '\n') if DEBUG == True else None
                 for counter2 in secondCodes:
@@ -63,6 +71,9 @@ def atc():
                     del text3[0]
                     thirdCodes = [item.split(' ')[0] for item in text3]
 
+                    # Updating Level 3 code & meaning in dictionary: ATCrefDict
+                    ATCrefDict = {**ATCrefDict, **{item.split(' ')[0]: item[item.index(' ') + 1:] for item in text3}}
+
                     # Logging
                     print('Third Level: ', len(thirdCodes), thirdCodes, '\n') if DEBUG == True else None
                     for counter3 in thirdCodes:
@@ -76,9 +87,9 @@ def atc():
                             c1 = c2 = 0
                             for element in rowOfDetails:
                                 tempRow = [item.strip() for item in element.text.split('  ')]
-                                print(len(tempRow), tempRow)
+                                print(len(tempRow), element.text)
                                 # Swapping & shifting logic
-                                if len(tempRow) == 5 or len(tempRow) == 6:
+                                if len(tempRow) >= 5:
                                     c1, c2 = tempRow[0:2]
                                 if len(tempRow) == 3:
                                     a, b, c = tempRow[0:3]
@@ -94,11 +105,11 @@ def atc():
                         else:
                             pass
         except(Exception):
-            print('Error in ', letter, ', No data found')
+            print('Error in ', letter, ', No data found') if DEBUG == True else None
     driver.close()
     # Congregating
     ATCinfo = [item for sublist in ATCinfo for item in sublist]
-    return ATCinfo
+    return [ATCinfo, ATCrefDict]
 
 
 def fda():
@@ -159,7 +170,7 @@ def drugs():
     chromeOptions.add_experimental_option("detach", True)
     driver = webdriver.Chrome(executable_path='./webdrivers/chromedriver', options=chromeOptions)
     # Loop to find all drug names as per indexed pages
-    for letter in ['a']:
+    for letter in string.ascii_lowercase:
         driver.get('https://www.drugs.com/alpha/' + letter + '.html')
         # Trying to find active html references for redirection
         topList = driver.find_element_by_class_name('ddc-paging')
@@ -198,7 +209,7 @@ def drugs():
     return drugsInfo
 
 
-def chembl(ATCData):
+def chembl():  # Take multiple CHEMBL compounds with similar names
     chromeOptions = Options()
     chromeOptions.add_experimental_option("detach", True)
     driver = webdriver.Chrome(executable_path='./webdrivers/chromedriver', options=chromeOptions)
@@ -225,7 +236,37 @@ def chembl(ATCData):
         print('Page loading issue') if DEBUG == True else None
 
 
+def findATC_Levels_123(fourthLevelCode, ATC_Level_Dict):
+    newATCDict = {}
+    for key, value in ATC_Level_Dict.items():
+        newATCDict[key] = value.replace(',', ' &')
+    print(newATCDict) if DEBUG == True else None
+    tempLevelString = []
+    for key, value in newATCDict.items():
+        if fourthLevelCode.startswith(key):
+            tempLevelString.append(key)
+            tempLevelString.append(value)
+    print(len(tempLevelString), tempLevelString) if DEBUG == True else None
+    return tempLevelString
+
+
 if __name__ == '__main__':
-    array = atc()
-    df = pd.DataFrame.from_records(array, columns=['ATC code', 'Name', 'DDD', 'U', 'Adm.R', 'Note'])
-    df.to_csv('ATC dump' + str(datetime.datetime.now().strftime('%Y-%m-%d')) + '.csv', index=None)
+    #########################
+    # ATC Report Generation #
+    #########################
+    startTime = timer()
+    ATClevel4array, ATC_Level_Dict = atc()
+    # print(ATClevel4array)
+    ATC_DataFrame = pd.DataFrame.from_records(ATClevel4array, columns=['ATC_Code', 'Name', 'DDD', 'U', 'Adm.R', 'Note'])
+    ATC_DataFrame.to_csv('temp.csv', index=None)
+    ATC_DataFrame['L1_Code'] = ATC_DataFrame['ATC_Code'].apply(lambda x: findATC_Levels_123(x, ATC_Level_Dict)[0])
+    ATC_DataFrame['L1_Name'] = ATC_DataFrame['ATC_Code'].apply(lambda x: findATC_Levels_123(x, ATC_Level_Dict)[1])
+    ATC_DataFrame['L2_Code'] = ATC_DataFrame['ATC_Code'].apply(lambda x: findATC_Levels_123(x, ATC_Level_Dict)[2])
+    ATC_DataFrame['L2_Name'] = ATC_DataFrame['ATC_Code'].apply(lambda x: findATC_Levels_123(x, ATC_Level_Dict)[3])
+    ATC_DataFrame['L3_Code'] = ATC_DataFrame['ATC_Code'].apply(lambda x: findATC_Levels_123(x, ATC_Level_Dict)[4])
+    ATC_DataFrame['L3_Name'] = ATC_DataFrame['ATC_Code'].apply(lambda x: findATC_Levels_123(x, ATC_Level_Dict)[5])
+    ATC_DataFrame = ATC_DataFrame[
+        ['L1_Code', 'L1_Name', 'L2_Code', 'L2_Name', 'L3_Code', 'L3_Name', 'ATC_Code', 'Name', 'DDD', 'U', 'Adm.R',
+         'Note']]
+    ATC_DataFrame.to_csv('ATC Dump ' + str(datetime.datetime.now().strftime('%Y-%m-%d')) + '.csv', index=None)
+    print('ATC Dump generated in {} seconds'.format(timer() - startTime))
