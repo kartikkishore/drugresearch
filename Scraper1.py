@@ -130,6 +130,7 @@ def atc():
 
 def fda():
     FDAinfo = []
+    FDAlinkSet = set()
     chromeOptions = Options()
     chromeOptions.add_experimental_option("detach", True)
     driver = webdriver.Chrome(executable_path='./webdrivers/chromedriver', options=chromeOptions)
@@ -138,14 +139,16 @@ def fda():
         driver.get('https://www.accessdata.fda.gov/scripts/cder/daf')
         driver.find_element_by_link_text(letter).click()
         numPages = driver.find_element_by_class_name('pagination').text.split('\n')[2:-2]
+        # Traversing through all pages available for that letter
         for page in numPages:
             driver.find_element_by_link_text(page).click()
             level.append(driver.find_element_by_css_selector(
                 '#mp-pusher > div > div > div > div > div.row.content > div > table > tbody').text.split('\n'))
         level = [item for sublist in level for item in sublist]
-        # The list Level now contains every drug name with current letter eg: 'A'
+
+        # The list named: level now contains every drug name with current letter eg: 'A'
         for drug in level:
-            # Search for specific drug from level list
+            # Search for specific drug from level list in search area
             driver.get('https://www.accessdata.fda.gov/scripts/cder/daf')
             search = driver.find_element_by_id('searchterm')
             search.send_keys(drug)
@@ -158,22 +161,27 @@ def fda():
                 # Directly extracting information from target page
                 FDAinfo.append(driver.find_element_by_xpath('//*[@id="exampleProd"]/tbody').text)
             else:
-                # Iterating through each of the subcategories and opening one-by-one to extract information
-                driver.find_element_by_link_text(drug).click()
+                # Clicking required Drug element from the list:
+                drugSublistContainer = driver.find_element_by_link_text(drug)
+                drugSublistContainer.click()
+
+                # Get all the data available in the table:
+                table = driver.find_element_by_css_selector(
+                    '#mp-pusher > div > div > div > div > div.row.content > div > table > tbody')
+                bulkLinks = [item.get_attribute('href') for item in (table.find_elements_by_tag_name('a'))]
+
+                # Update set with links:
+                [FDAlinkSet.add(link) for link in bulkLinks]
                 time.sleep(2)
-                subcategories = len(driver.find_element_by_id('drugName1').text.split('\n'))
-                for subDrugsCounter in range(1, subcategories + 1):
-                    driver.get('https://www.accessdata.fda.gov/scripts/cder/daf')
-                    search = driver.find_element_by_id('searchterm')
-                    search.send_keys(drug)
-                    driver.find_element_by_css_selector(
-                        '#DrugNameform > div:nth-child(2) > button:nth-child(1)').click()
-                    driver.find_element_by_link_text(drug).click()
-                    time.sleep(2)
-                    driver.find_element_by_xpath('//*[@id="drugName1"]/li[' + str(subDrugsCounter) + ']/a').click()
-                    FDAinfo.append(driver.find_element_by_xpath('//*[@id="exampleProd"]/tbody').text.split('\n'))
-            # Logging for error checking
-            print(drug, FDAinfo, '\n') if DEBUG == True else None
+
+    # Now going through all links collected above, set() makes our job easier as no duplicates will be there
+    for link in FDAlinkSet:
+        driver.get(link)
+        if 'Marketing' in driver.page_source:
+            # Directly extracting information from target page
+            FDAinfo.append(driver.find_element_by_xpath('//*[@id="exampleProd"]/tbody').text)
+        else:
+            print('Issue with link:', link)
     driver.close()
     return FDAinfo
 
@@ -274,31 +282,31 @@ def writeIntermediateryToFile(fileAsInput, dataframe):
 
 
 if __name__ == '__main__':
-    #########################
-    # ATC Report Generation #
-    #########################
-    startTime = timer()
-    ATClevel4array, ATC_Level_Dict = atc()
-
-    # Creating Dataframe for text processing
-    ATC_DataFrame = pd.DataFrame.from_records(ATClevel4array, columns=['ATC_Code', 'Name', 'DDD', 'U', 'Adm.R', 'Note'])
-
-    # Intermediatery save dictionary - For validation purposes
-    writeIntermediateryToFile(ATC_Level_Dict) if DEBUG == True else None
-
-    # Data processing
-    ATC_DataFrame['L1_Code'] = ATC_DataFrame['ATC_Code'].apply(lambda x: findATC_Levels_123(x, ATC_Level_Dict)[0])
-    ATC_DataFrame['L1_Name'] = ATC_DataFrame['ATC_Code'].apply(lambda x: findATC_Levels_123(x, ATC_Level_Dict)[1])
-    ATC_DataFrame['L2_Code'] = ATC_DataFrame['ATC_Code'].apply(lambda x: findATC_Levels_123(x, ATC_Level_Dict)[2])
-    ATC_DataFrame['L2_Name'] = ATC_DataFrame['ATC_Code'].apply(lambda x: findATC_Levels_123(x, ATC_Level_Dict)[3])
-    ATC_DataFrame['L3_Code'] = ATC_DataFrame['ATC_Code'].apply(lambda x: findATC_Levels_123(x, ATC_Level_Dict)[4])
-    ATC_DataFrame['L3_Name'] = ATC_DataFrame['ATC_Code'].apply(lambda x: findATC_Levels_123(x, ATC_Level_Dict)[5])
-    ATC_DataFrame = ATC_DataFrame[
-        ['L1_Code', 'L1_Name', 'L2_Code', 'L2_Name', 'L3_Code', 'L3_Name', 'ATC_Code', 'Name', 'DDD', 'U', 'Adm.R',
-         'Note']]
-    ATC_DataFrame.to_csv('data/atc/ATC Dump ' + str(datetime.datetime.now().strftime('%Y-%m-%d')) + '.csv', index=None)
-    print('ATC Dump generated in {} seconds'.format(timer() - startTime))
-
+    # #########################
+    # # ATC Report Generation #
+    # #########################
+    # startTime = timer()
+    # ATClevel4array, ATC_Level_Dict = atc()
+    #
+    # # Creating Dataframe for text processing
+    # ATC_DataFrame = pd.DataFrame.from_records(ATClevel4array, columns=['ATC_Code', 'Name', 'DDD', 'U', 'Adm.R', 'Note'])
+    #
+    # # Intermediatery save dictionary - For validation purposes
+    # writeIntermediateryToFile(ATC_Level_Dict) if DEBUG == True else None
+    #
+    # # Data processing
+    # ATC_DataFrame['L1_Code'] = ATC_DataFrame['ATC_Code'].apply(lambda x: findATC_Levels_123(x, ATC_Level_Dict)[0])
+    # ATC_DataFrame['L1_Name'] = ATC_DataFrame['ATC_Code'].apply(lambda x: findATC_Levels_123(x, ATC_Level_Dict)[1])
+    # ATC_DataFrame['L2_Code'] = ATC_DataFrame['ATC_Code'].apply(lambda x: findATC_Levels_123(x, ATC_Level_Dict)[2])
+    # ATC_DataFrame['L2_Name'] = ATC_DataFrame['ATC_Code'].apply(lambda x: findATC_Levels_123(x, ATC_Level_Dict)[3])
+    # ATC_DataFrame['L3_Code'] = ATC_DataFrame['ATC_Code'].apply(lambda x: findATC_Levels_123(x, ATC_Level_Dict)[4])
+    # ATC_DataFrame['L3_Name'] = ATC_DataFrame['ATC_Code'].apply(lambda x: findATC_Levels_123(x, ATC_Level_Dict)[5])
+    # ATC_DataFrame = ATC_DataFrame[
+    #     ['L1_Code', 'L1_Name', 'L2_Code', 'L2_Name', 'L3_Code', 'L3_Name', 'ATC_Code', 'Name', 'DDD', 'U', 'Adm.R',
+    #      'Note']]
+    # ATC_DataFrame.to_csv('data/atc/ATC Dump ' + str(datetime.datetime.now().strftime('%Y-%m-%d')) + '.csv', index=None)
+    # print('ATC Dump generated in {} seconds'.format(timer() - startTime))
     #########################
     # FDA Report Generation #
     #########################
+    temp = fda()
