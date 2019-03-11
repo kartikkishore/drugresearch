@@ -19,7 +19,7 @@ def atc():
     # Configure chrome in detach mode to persist chrome window
     chromeOptions = Options()
     chromeOptions.add_experimental_option("detach", True)
-    driver = webdriver.Chrome(executable_path='./webdrivers/chromedriver')
+    driver = webdriver.Chrome(executable_path='./webdrivers/chromedriver', options=chromeOptions)
 
     # Insert loop for searching with all alphabets here
     for letter in ['B']:
@@ -79,24 +79,39 @@ def atc():
                     for counter3 in thirdCodes:
                         driver.get('https://www.whocc.no/atc_ddd_index/' + '?code=' + counter3)
 
+                        # Issue01 | Flag setting
+                        Issue01 = False
+
                         # Fourth level Scraping
                         text4 = []
                         if driver.page_source.__contains__('<td>Adm.R</td>'):
                             tableBody = driver.find_element_by_xpath('//*[@id="content"]/ul/table/tbody')
                             rowOfDetails = tableBody.find_elements_by_tag_name('tr')
-                            c1 = c2 = 0
+                            c1 = c2 = iv1 = iv2 = 0
+                            # Issue01 | Special case: subcategory has no code or name - Inheriting the previous level
+                            if rowOfDetails[0].text.split('  ')[0] == 'ATC code' and \
+                                    len(rowOfDetails[1].text.split('  ')[0]) != 7:
+                                iv1 = counter3 + '**'
+                                iv2 = ATCrefDict[counter3].strip()
+                                Issue01 = True
+                            # Normal case - every detail present in the table
                             for element in rowOfDetails:
                                 tempRow = [item.strip() for item in element.text.split('  ')]
-                                print(len(tempRow), element.text)
+                                print(len(tempRow), tempRow) if DEBUG == True else None
                                 # Swapping & shifting logic
                                 if len(tempRow) >= 5:
                                     c1, c2 = tempRow[0:2]
                                 if len(tempRow) == 3:
                                     a, b, c = tempRow[0:3]
                                     tempRow = [c1, c2, a, b, c]
+                                    if Issue01:
+                                        tempRow = [iv1, iv2, a, b, c]
                                 if len(tempRow) == 4:
                                     a, b, c, d = tempRow[0:4]
                                     tempRow = [c1, c2, a, b, c, d]
+                                    if Issue01:
+                                        tempRow = [iv1, iv2, a, b, c, d]
+                                print(tempRow)
                                 text4.append(tempRow) if 'ATC c' not in element.text else None
                                 # Logging
                                 print(text4) if DEBUG == True else None
@@ -258,7 +273,6 @@ if __name__ == '__main__':
     ATClevel4array, ATC_Level_Dict = atc()
     # print(ATClevel4array)
     ATC_DataFrame = pd.DataFrame.from_records(ATClevel4array, columns=['ATC_Code', 'Name', 'DDD', 'U', 'Adm.R', 'Note'])
-    ATC_DataFrame.to_csv('temp.csv', index=None)
     ATC_DataFrame['L1_Code'] = ATC_DataFrame['ATC_Code'].apply(lambda x: findATC_Levels_123(x, ATC_Level_Dict)[0])
     ATC_DataFrame['L1_Name'] = ATC_DataFrame['ATC_Code'].apply(lambda x: findATC_Levels_123(x, ATC_Level_Dict)[1])
     ATC_DataFrame['L2_Code'] = ATC_DataFrame['ATC_Code'].apply(lambda x: findATC_Levels_123(x, ATC_Level_Dict)[2])
