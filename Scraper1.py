@@ -1,6 +1,7 @@
 import datetime
 import string
 import time
+import json
 from timeit import default_timer as timer
 
 import pandas as pd
@@ -22,7 +23,7 @@ def atc():
     driver = webdriver.Chrome(executable_path='./webdrivers/chromedriver', options=chromeOptions)
 
     # Insert loop for searching with all alphabets here
-    for letter in ['B']:
+    for letter in string.ascii_uppercase:
         alphabet = letter
         driver.get('https://www.whocc.no/atc_ddd_index/')
         searchBox = driver.find_element_by_xpath('//*[@id="content"]/form/table/tbody/tr/td[1]/input')
@@ -38,8 +39,8 @@ def atc():
             firstCodes = [item[0:3] for item in text]
 
             # Updating Level 1 code & meaning in dictionary: ATCrefDict
-            ATCrefDict = {item[0:3]: item[4:].strip() for item in text}
-
+            ATCrefDict = {**ATCrefDict, **{item[0:3]: item[4:].strip() for item in text}}
+            print('1st= ', ATCrefDict, '\n')
             # Logging
             print('First Level: ', len(firstCodes), firstCodes, '\n') if DEBUG == True else None
             for counter1 in firstCodes:
@@ -56,7 +57,7 @@ def atc():
 
                 # Updating Level 2 code & meaning in dictionary: ATCrefDict
                 ATCrefDict = {**ATCrefDict, **{item.split(' ')[0]: item[item.index(' ') + 1:] for item in text2}}
-
+                print('2nd= ', ATCrefDict, '\n')
                 # Logging
                 print('Second Level: ', len(secondCodes), secondCodes, '\n') if DEBUG == True else None
                 for counter2 in secondCodes:
@@ -111,16 +112,16 @@ def atc():
                                     tempRow = [c1, c2, a, b, c, d]
                                     if Issue01:
                                         tempRow = [iv1, iv2, a, b, c, d]
-                                print(tempRow)
                                 text4.append(tempRow) if 'ATC c' not in element.text else None
-                                # Logging
-                                print(text4) if DEBUG == True else None
+                                # Logging - New data added
+                                print(tempRow) if DEBUG == True else None
                             # Storing data
                             ATCinfo.append(text4)
                         else:
                             pass
         except(Exception):
             print('Error in ', letter, ', No data found') if DEBUG == True else None
+            pass
     driver.close()
     # Congregating
     ATCinfo = [item for sublist in ATCinfo for item in sublist]
@@ -261,8 +262,15 @@ def findATC_Levels_123(fourthLevelCode, ATC_Level_Dict):
         if fourthLevelCode.startswith(key):
             tempLevelString.append(key)
             tempLevelString.append(value)
-    print(len(tempLevelString), tempLevelString) if DEBUG == True else None
+    print(fourthLevelCode, len(tempLevelString), tempLevelString) if DEBUG == True else None
     return tempLevelString
+
+
+def writeIntermediateryToFile(fileAsInput, dataframe):
+    # This is just for debugging purposes
+    with open('data/atc/ATC_Level_Dict.json', 'w') as file:
+        file.write(json.dumps(ATC_Level_Dict))
+    dataframe.to_csv('data/atc/ATC_Intermediatery_Data.csv', index=None)
 
 
 if __name__ == '__main__':
@@ -271,8 +279,14 @@ if __name__ == '__main__':
     #########################
     startTime = timer()
     ATClevel4array, ATC_Level_Dict = atc()
-    # print(ATClevel4array)
+
+    # Creating Dataframe for text processing
     ATC_DataFrame = pd.DataFrame.from_records(ATClevel4array, columns=['ATC_Code', 'Name', 'DDD', 'U', 'Adm.R', 'Note'])
+
+    # Intermediatery save dictionary - For validation purposes
+    writeIntermediateryToFile(ATC_Level_Dict) if DEBUG == True else None
+
+    # Data processing
     ATC_DataFrame['L1_Code'] = ATC_DataFrame['ATC_Code'].apply(lambda x: findATC_Levels_123(x, ATC_Level_Dict)[0])
     ATC_DataFrame['L1_Name'] = ATC_DataFrame['ATC_Code'].apply(lambda x: findATC_Levels_123(x, ATC_Level_Dict)[1])
     ATC_DataFrame['L2_Code'] = ATC_DataFrame['ATC_Code'].apply(lambda x: findATC_Levels_123(x, ATC_Level_Dict)[2])
@@ -282,5 +296,9 @@ if __name__ == '__main__':
     ATC_DataFrame = ATC_DataFrame[
         ['L1_Code', 'L1_Name', 'L2_Code', 'L2_Name', 'L3_Code', 'L3_Name', 'ATC_Code', 'Name', 'DDD', 'U', 'Adm.R',
          'Note']]
-    ATC_DataFrame.to_csv('ATC Dump ' + str(datetime.datetime.now().strftime('%Y-%m-%d')) + '.csv', index=None)
+    ATC_DataFrame.to_csv('data/atc/ATC Dump ' + str(datetime.datetime.now().strftime('%Y-%m-%d')) + '.csv', index=None)
     print('ATC Dump generated in {} seconds'.format(timer() - startTime))
+
+    #########################
+    # FDA Report Generation #
+    #########################
