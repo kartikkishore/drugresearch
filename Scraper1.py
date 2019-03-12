@@ -17,6 +17,7 @@ from selenium.webdriver.support import expected_conditions
 from selenium.webdriver.support.ui import WebDriverWait
 
 DEBUG = False
+FDAMOCKTEST = False
 
 
 def atc():
@@ -136,9 +137,11 @@ def atc():
 def fda():
     FDAinfo = []
     FDAlinkSet = set()
+
     chromeOptions = Options()
     chromeOptions.add_experimental_option("detach", True)
     driver = webdriver.Chrome(executable_path='./webdrivers/chromedriver', options=chromeOptions)
+
     with tqdm(total=len(string.ascii_uppercase)) as alphabetScrapingProgress:
         for letter in string.ascii_uppercase:
             driver.get('https://www.accessdata.fda.gov/scripts/cder/daf')
@@ -157,15 +160,19 @@ def fda():
             alphabetScrapingProgress.update(1)
     driver.close()
 
+    # Purpose of mock-testing
+    if FDAMOCKTEST:
+        FDAlinkSet = pickle.load(open('data/fda/FDAlink_pickle', 'rb'))
+
     # Saving set as pickle
     with open('data/fda/FDAlink_Pickle', 'wb') as fp:
         pickle.dump(FDAlinkSet, fp)
+    FDAFile = open('data/fda/FDA_logger.csv', 'a')
 
     # Visit all scraped links one by one
     with tqdm(total=len(FDAlinkSet)) as linkScrapper:
         for link in FDAlinkSet:
-            start = 0
-            end = 5
+            start, end = [0, 5]
             webPage = requests.get(link).text
             soup = BeautifulSoup(webPage)
             if 'Active Ingredients' in str(soup):
@@ -174,7 +181,9 @@ def fda():
                 # Slicing the data for the first 5 columns that we need
                 [FDAinfo.append(drugData[start + i:end + i]) if drugData[start + i:end + i] != [] else None for i in
                  range(0, 1000, 8)]
+                FDAFile.flush()
             linkScrapper.update(1)
+    FDAFile.close()
     return FDAinfo
 
 
