@@ -2,7 +2,12 @@ import datetime
 import string
 import time
 import json
+import pickle
+import itertools
+from tqdm import tqdm
 from timeit import default_timer as timer
+from bs4 import BeautifulSoup
+import requests
 
 import pandas as pd
 from selenium import webdriver
@@ -134,55 +139,42 @@ def fda():
     chromeOptions = Options()
     chromeOptions.add_experimental_option("detach", True)
     driver = webdriver.Chrome(executable_path='./webdrivers/chromedriver', options=chromeOptions)
-    for letter in string.ascii_uppercase:
-        level = []
-        driver.get('https://www.accessdata.fda.gov/scripts/cder/daf')
-        driver.find_element_by_link_text(letter).click()
-        numPages = driver.find_element_by_class_name('pagination').text.split('\n')[2:-2]
-        # Traversing through all pages available for that letter
-        for page in numPages:
-            driver.find_element_by_link_text(page).click()
-            level.append(driver.find_element_by_css_selector(
-                '#mp-pusher > div > div > div > div > div.row.content > div > table > tbody').text.split('\n'))
-        level = [item for sublist in level for item in sublist]
-
-        # The list named: level now contains every drug name with current letter eg: 'A'
-        for drug in level:
-            # Search for specific drug from level list in search area
+    with tqdm(total=len(string.ascii_uppercase)) as alphabetScrapingProgress:
+        for letter in string.ascii_uppercase:
             driver.get('https://www.accessdata.fda.gov/scripts/cder/daf')
-            search = driver.find_element_by_id('searchterm')
-            search.send_keys(drug)
-            driver.find_element_by_css_selector('#DrugNameform > div:nth-child(2) > button:nth-child(1)').click()
-            time.sleep(1)
+            driver.find_element_by_link_text(letter).click()
 
-            # View results - can be segregated into specific product search outcome, eg: AUGMENTIN '875'
-            # Or A-HYDROCORT searches which list down a number of combinations.
-            if 'Marketing' in driver.page_source:
-                # Directly extracting information from target page
-                FDAinfo.append(driver.find_element_by_xpath('//*[@id="exampleProd"]/tbody').text)
-            else:
-                # Clicking required Drug element from the list:
-                drugSublistContainer = driver.find_element_by_link_text(drug)
-                drugSublistContainer.click()
+            # Finding: All links for a particular letter are available in the table tag as per HTML structure
+            # Page segmentation for the table is on a UI-UX level
+            largeTable = driver.find_element_by_css_selector(
+                '#mp-pusher > div > div > div > div > div.row.content > div > table > tbody')
 
-                # Get all the data available in the table:
-                table = driver.find_element_by_css_selector(
-                    '#mp-pusher > div > div > div > div > div.row.content > div > table > tbody')
-                bulkLinks = [item.get_attribute('href') for item in (table.find_elements_by_tag_name('a'))]
+            # Scraping all links for that letter
+            bulkLinks = [rowElement.get_attribute('href') for rowElement in largeTable.find_elements_by_tag_name('a')]
 
-                # Update set with links:
-                [FDAlinkSet.add(link) for link in bulkLinks]
-                time.sleep(2)
-
-    # Now going through all links collected above, set() makes our job easier as no duplicates will be there
-    for link in FDAlinkSet:
-        driver.get(link)
-        if 'Marketing' in driver.page_source:
-            # Directly extracting information from target page
-            FDAinfo.append(driver.find_element_by_xpath('//*[@id="exampleProd"]/tbody').text)
-        else:
-            print('Issue with link:', link)
+            # Add to link set, discarding redirection and useless links
+            [FDAlinkSet.add(link) if 'browse' not in link else None for link in bulkLinks]
+            alphabetScrapingProgress.update(1)
     driver.close()
+
+    # Saving set as pickle
+    with open('data/fda/FDAlink_Pickle', 'wb') as fp:
+        pickle.dump(FDAlinkSet, fp)
+
+    # Visit all scraped links one by one
+    with tqdm(total=len(FDAlinkSet)) as linkScrapper:
+        for link in FDAlinkSet:
+            start = 0
+            end = 5
+            webPage = requests.get(link).text
+            soup = BeautifulSoup(webPage)
+            if 'Active Ingredients' in str(soup):
+                tableWithID_exampleProd = soup.find('table')
+                drugData = [item.text for item in tableWithID_exampleProd.find_all('td')]
+                # Slicing the data for the first 5 columns that we need
+                [FDAinfo.append(drugData[start + i:end + i]) if drugData[start + i:end + i] != [] else None for i in
+                 range(0, 1000, 8)]
+            linkScrapper.update(1)
     return FDAinfo
 
 
@@ -277,7 +269,7 @@ def findATC_Levels_123(fourthLevelCode, ATC_Level_Dict):
 def writeIntermediateryToFile(fileAsInput, dataframe):
     # This is just for debugging purposes
     with open('data/atc/ATC_Level_Dict.json', 'w') as file:
-        file.write(json.dumps(ATC_Level_Dict))
+        file.write(json.dumps(fileAsInput))
     dataframe.to_csv('data/atc/ATC_Intermediatery_Data.csv', index=None)
 
 
@@ -310,3 +302,5 @@ if __name__ == '__main__':
     # FDA Report Generation #
     #########################
     temp = fda()
+    with open('data/fda/FDAProcessed', 'wb') as fp:
+        pickle.dump(temp, fp)
