@@ -1,23 +1,23 @@
 import datetime
-import string
-import time
 import json
 import pickle
-import itertools
-from tqdm import tqdm
+import string
+import os
+import time
 from timeit import default_timer as timer
-from bs4 import BeautifulSoup
-import requests
 
 import pandas as pd
+import requests
+from bs4 import BeautifulSoup
 from selenium import webdriver
 from selenium.webdriver.chrome.options import Options
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support import expected_conditions
 from selenium.webdriver.support.ui import WebDriverWait
+from tqdm import tqdm
 
 DEBUG = False
-FDAMOCKTEST = False
+FDAMOCKTEST = True
 
 
 def atc():
@@ -135,54 +135,78 @@ def atc():
 
 
 def fda():
-    FDAinfo = []
-    FDAlinkSet = set()
+    FDAinfo = FDAlinkList = []
+    try:
+        os.remove('data/fda/FDA_logger.csv')
+    except Exception:
+        None
+    if FDAMOCKTEST is False:
+        chromeOptions = Options()
+        chromeOptions.add_experimental_option("detach", True)
+        driver = webdriver.Chrome(executable_path='./webdrivers/chromedriver', options=chromeOptions)
 
-    chromeOptions = Options()
-    chromeOptions.add_experimental_option("detach", True)
-    driver = webdriver.Chrome(executable_path='./webdrivers/chromedriver', options=chromeOptions)
+        with tqdm(total=len(string.ascii_uppercase)) as alphabetScrapingProgress:
+            for letter in string.ascii_uppercase:
+                driver.get('https://www.accessdata.fda.gov/scripts/cder/daf')
+                driver.find_element_by_link_text(letter).click()
 
-    with tqdm(total=len(string.ascii_uppercase)) as alphabetScrapingProgress:
-        for letter in string.ascii_uppercase:
-            driver.get('https://www.accessdata.fda.gov/scripts/cder/daf')
-            driver.find_element_by_link_text(letter).click()
+                # Finding: All links for a particular letter are available in the table tag as per HTML structure
+                # Page segmentation for the table is on a UI-UX level
+                largeTable = driver.find_element_by_css_selector(
+                    '#mp-pusher > div > div > div > div > div.row.content > div > table > tbody')
 
-            # Finding: All links for a particular letter are available in the table tag as per HTML structure
-            # Page segmentation for the table is on a UI-UX level
-            largeTable = driver.find_element_by_css_selector(
-                '#mp-pusher > div > div > div > div > div.row.content > div > table > tbody')
+                # Scraping all links for that letter
+                bulkLinks = [rowElement.get_attribute('href') for rowElement in largeTable.find_elements_by_tag_name('a')]
 
-            # Scraping all links for that letter
-            bulkLinks = [rowElement.get_attribute('href') for rowElement in largeTable.find_elements_by_tag_name('a')]
+                # Add to link set, discarding redirection and useless links
+                [FDAlinkList.append(link) if 'browse' not in link else None for link in bulkLinks]
+                alphabetScrapingProgress.update(1)
+        driver.close()
 
-            # Add to link set, discarding redirection and useless links
-            [FDAlinkSet.add(link) if 'browse' not in link else None for link in bulkLinks]
-            alphabetScrapingProgress.update(1)
-    driver.close()
-
-    # Purpose of mock-testing
+    # For the purpose of mock-testing
     if FDAMOCKTEST:
-        FDAlinkSet = pickle.load(open('data/fda/FDAlink_pickle', 'rb'))
+        FDAlinkList = pickle.load(open('data/fda/FDAlink_pickle', 'rb'))
 
     # Saving set as pickle
     with open('data/fda/FDAlink_Pickle', 'wb') as fp:
-        pickle.dump(FDAlinkSet, fp)
+        pickle.dump(FDAlinkList, fp)
     FDAFile = open('data/fda/FDA_logger.csv', 'a')
 
+    sleepCounter = 0
+    linkCompletedSet = set()
+
     # Visit all scraped links one by one
-    with tqdm(total=len(FDAlinkSet)) as linkScrapper:
-        for link in FDAlinkSet:
+    with tqdm(total=len(FDAlinkList)) as linkScrapper:
+        for link in FDAlinkList:
+            sleepCounter += 1
             start, end = [0, 5]
-            webPage = requests.get(link).text
-            soup = BeautifulSoup(webPage)
-            if 'Active Ingredients' in str(soup):
-                tableWithID_exampleProd = soup.find('table')
-                drugData = [item.text for item in tableWithID_exampleProd.find_all('td')]
-                # Slicing the data for the first 5 columns that we need
-                [FDAinfo.append(drugData[start + i:end + i]) if drugData[start + i:end + i] != [] else None for i in
-                 range(0, 1000, 8)]
-                FDAFile.flush()
-            linkScrapper.update(1)
+            try:
+                webPage = requests.get(link, timeout=100).text
+                soup = BeautifulSoup(webPage)
+                if 'Active Ingredients' in str(soup):
+                    tableWithID_exampleProd = soup.find('table')
+                    drugData = [item.text for item in tableWithID_exampleProd.find_all('td')]
+
+                    # Slicing the data for the first 5 columns that we need
+                    [FDAinfo.append(drugData[start + i:end + i]) if drugData[start + i:end + i] != [] else None for i in
+                     range(0, 1000, 8)]
+
+                    # Writing to file
+                    [FDAFile.write(str(str(drugData[start + i:end + i]) + '\n')) if drugData[start + i:end + i] != [] else None for i in range(0, 1000, 8)]
+                    FDAFile.flush()
+                linkCompletedSet.add(link)
+                linkScrapper.update(1)
+                # Sleeping measures so as to not spam the website with requests
+                if sleepCounter % 200 == 0:
+                    time.sleep(15)
+                if sleepCounter % 500 == 0:
+                    time.sleep(30)
+            except requests.exceptions.Timeout as timeout:
+                time.sleep(100)
+                errorPath = 'data/fda/LinksCompleted_' + str(datetime.datetime.now().strftime('%m-%d-%H-%M'))
+                with open(errorPath, 'wb') as fp:
+                    pickle.dump(linkCompletedSet, fp)
+                pass
     FDAFile.close()
     return FDAinfo
 
