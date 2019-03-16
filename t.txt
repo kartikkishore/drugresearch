@@ -1,0 +1,13 @@
+        try:
+            # Pronunciation Available
+            name = driver.find_element_by_class_name('pronounce-title').text
+        except Exception:
+            # Pronunciation Unavailable
+            name = driver.find_element_by_css_selector('#content > div.contentBox > h1').text
+        try:
+            # Subtitle available having brand name and information
+            text = driver.find_element_by_class_name('drug-subtitle').text.split('\n')
+        except Exception:
+            # Information Unavailable, leaving it as blank
+            text = []
+        drugsInfo.append([name, text])

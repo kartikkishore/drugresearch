@@ -18,6 +18,7 @@ from tqdm import tqdm
 
 DEBUG = False
 FDAMOCKTEST = True
+DRUGMOCKTEST = True
 
 
 def atc():
@@ -137,7 +138,8 @@ def atc():
 def fda():
     FDAinfo = FDAlinkList = []
     try:
-        os.remove('data/fda/FDA_logger.csv')
+        if FDAMOCKTEST:
+            os.remove('data/fda/FDA_logger.csv')
     except Exception:
         None
     if FDAMOCKTEST is False:
@@ -156,7 +158,8 @@ def fda():
                     '#mp-pusher > div > div > div > div > div.row.content > div > table > tbody')
 
                 # Scraping all links for that letter
-                bulkLinks = [rowElement.get_attribute('href') for rowElement in largeTable.find_elements_by_tag_name('a')]
+                bulkLinks = [rowElement.get_attribute('href') for rowElement in
+                             largeTable.find_elements_by_tag_name('a')]
 
                 # Add to link set, discarding redirection and useless links
                 [FDAlinkList.append(link) if 'browse' not in link else None for link in bulkLinks]
@@ -174,10 +177,12 @@ def fda():
 
     sleepCounter = 0
     linkCompletedSet = set()
+    errorPath = ''
 
     # Visit all scraped links one by one
     with tqdm(total=len(FDAlinkList)) as linkScrapper:
         for link in FDAlinkList:
+            errorPath = 'data/fda/LinksCompleted_' + str(datetime.datetime.now().strftime('%m-%d-%H-%M'))
             sleepCounter += 1
             start, end = [0, 5]
             try:
@@ -192,7 +197,9 @@ def fda():
                      range(0, 1000, 8)]
 
                     # Writing to file
-                    [FDAFile.write(str(str(drugData[start + i:end + i]) + '\n')) if drugData[start + i:end + i] != [] else None for i in range(0, 1000, 8)]
+                    [FDAFile.write(str(str(drugData[start + i:end + i]) + '\n')) if drugData[
+                                                                                    start + i:end + i] != [] else None
+                     for i in range(0, 1000, 8)]
                     FDAFile.flush()
                 linkCompletedSet.add(link)
                 linkScrapper.update(1)
@@ -201,9 +208,18 @@ def fda():
                     time.sleep(15)
                 if sleepCounter % 500 == 0:
                     time.sleep(30)
-            except requests.exceptions.Timeout as timeout:
+            except requests.exceptions.SSLError:
                 time.sleep(100)
-                errorPath = 'data/fda/LinksCompleted_' + str(datetime.datetime.now().strftime('%m-%d-%H-%M'))
+                with open(errorPath, 'wb') as fp:
+                    pickle.dump(linkCompletedSet, fp)
+                pass
+            except requests.exceptions.Timeout:
+                time.sleep(100)
+                with open(errorPath, 'wb') as fp:
+                    pickle.dump(linkCompletedSet, fp)
+                pass
+            except requests.exceptions.ConnectionError:
+                time.sleep(100)
                 with open(errorPath, 'wb') as fp:
                     pickle.dump(linkCompletedSet, fp)
                 pass
@@ -212,53 +228,60 @@ def fda():
 
 
 def drugs():
-    drugsInfo = []
-    drugIndexLinks = []
-    drugView = []
+    drugsInfo = drugIndexLinks = drugView = []
+
     chromeOptions = Options()
     chromeOptions.add_experimental_option("detach", True)
     driver = webdriver.Chrome(executable_path='./webdrivers/chromedriver', options=chromeOptions)
-    # Loop to find all drug names as per indexed pages
-    for letter in string.ascii_lowercase:
-        driver.get('https://www.drugs.com/alpha/' + letter + '.html')
-        # Trying to find active html references for redirection
-        topList = driver.find_element_by_class_name('ddc-paging')
-        links = [item.get_attribute('href') for item in topList.find_elements_by_tag_name('a')]
-        print(links) if DEBUG == True else None
-        drugIndexLinks.append(links)
 
-    # Now the list: drugIndexLinks has all the available link combinations, we can access them directly and extract data
-    drugIndexLinks = [item for sublist in drugIndexLinks for item in sublist]
+    if DRUGMOCKTEST is False:
+        # Loop to find all drug names as per indexed pages
+        for letter in string.ascii_lowercase:
+            driver.get('https://www.drugs.com/alpha/' + letter + '.html')
+            # Trying to find active html references for redirection
+            topList = driver.find_element_by_class_name('ddc-paging')
+            links = [item.get_attribute('href') for item in topList.find_elements_by_tag_name('a')]
+            print(links) if DEBUG == True else None
+            drugIndexLinks.append(links)
 
-    for link in drugIndexLinks:
-        driver.get(link)
-        drugTable = driver.find_element_by_css_selector('#content > div.contentBox > ul')
-        eachDrugLink = [item.get_attribute('href') for item in drugTable.find_elements_by_tag_name('a')]
-        print(eachDrugLink) if DEBUG == True else None
-        drugView.append(eachDrugLink)
+        # List: drugIndexLinks has all the available alphabets combinations, access them directly and extract data
+        drugIndexLinks = [item for sublist in drugIndexLinks for item in sublist]
 
-    # Now the list: drugView has all the drug page links
-    drugView = [item for sublist in drugView for item in sublist]
+        with tqdm(total=len(drugIndexLinks)) as pbar:
+            for link in drugIndexLinks:
+                driver.get(link)
+                drugTable = driver.find_element_by_css_selector('#content > div.contentBox > ul')
+                eachDrugLink = [item.get_attribute('href') for item in drugTable.find_elements_by_tag_name('a')]
+                print(eachDrugLink) if DEBUG == True else None
+                drugView.append(eachDrugLink)
+                time.sleep(2)
+                pbar.update(1)
 
-    for link in drugView:
-        driver.get(link)
-        try:
-            # Pronunciation Available
-            name = driver.find_element_by_class_name('pronounce-title').text
-        except Exception:
-            # Pronunciation Unavailable
-            name = driver.find_element_by_css_selector('#content > div.contentBox > h1').text
-        try:
-            # Subtitle available having brand name and information
-            text = driver.find_element_by_class_name('drug-subtitle').text.split('\n')
-        except Exception:
-            # Information Unavailable, leaving it as blank
-            text = []
-        drugsInfo.append([name, text])
+        # Now the list: drugView has all the drug page links
+        drugView = [item for sublist in drugView for item in sublist]
+
+        # Saving data to File
+        with open('data/drugs/drugsLink_Pickle', 'wb') as fp:
+            pickle.dump(drugView, fp)
+    driver.close()
+
+    if DRUGMOCKTEST:
+        drugView = pickle.load(open('data/drugs/drugsLink_Pickle', 'rb'))
+    del drugView[0:390]
+
+    with tqdm(total=len(drugView)) as drugsDotComBar:
+        for link in drugView:
+            try:
+                webPage = requests.get(link, timeout=100).text
+                soup = BeautifulSoup(webPage)
+                print(soup.find('p', attrs={'class': 'drug-subtitle'}).text)
+            except Exception:
+                pass
+            drugsDotComBar.update(1)
     return drugsInfo
 
 
-def chembl():  # Take multiple CHEMBL compounds with similar names
+def chembl():
     chromeOptions = Options()
     chromeOptions.add_experimental_option("detach", True)
     driver = webdriver.Chrome(executable_path='./webdrivers/chromedriver', options=chromeOptions)
@@ -334,6 +357,5 @@ if __name__ == '__main__':
     #########################
     # FDA Report Generation #
     #########################
-    temp = fda()
-    with open('data/fda/FDAProcessed', 'wb') as fp:
-        pickle.dump(temp, fp)
+    # temp = fda()
+    drugs()
