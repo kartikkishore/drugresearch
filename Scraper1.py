@@ -229,6 +229,7 @@ def fda():
 
 def drugs():
     drugsInfo = drugIndexLinks = drugView = []
+    os.remove('data/drugs/drugs_logger.csv')
 
     chromeOptions = Options()
     chromeOptions.add_experimental_option("detach", True)
@@ -269,15 +270,57 @@ def drugs():
         drugView = pickle.load(open('data/drugs/drugsLink_Pickle', 'rb'))
     del drugView[0:390]
 
+    drugView = set(drugView)
+    drugsFile = open('data/drugs/drugs_logger.csv', 'a')
+    sleepCounter = 0
+
     with tqdm(total=len(drugView)) as drugsDotComBar:
         for link in drugView:
-            try:
+            sleepCounter += 1
+
+            drugsDotComBar.update(1)
+            # Ignoring natural products
+            if 'https://www.drugs.com/npc' in str(link):
+                pass
+            else:
                 webPage = requests.get(link, timeout=100).text
                 soup = BeautifulSoup(webPage)
-                print(soup.find('p', attrs={'class': 'drug-subtitle'}).text)
-            except Exception:
-                pass
-            drugsDotComBar.update(1)
+                try:
+                    x = soup.find('p', attrs={'class': 'drug-subtitle'}).text
+                    drugsFile.write(str(x.split('\n')) + '|' + link + '\n')
+                    drugsFile.flush()
+                except AttributeError:
+                    try:
+                        brandNamesUS = soup.find('h2', string='Brand Names: U.S.')
+                        bUS = brandNamesUS.find_next('ul').text.split('\n')
+                        print('Brand US', bUS, link)
+                        drugsFile.write(str(bUS) + '|' + link + '\n')
+                        drugsFile.flush()
+                    except AttributeError:
+                        try:
+                            inTheUS = soup.find('b', string='In the U.S.')
+                            iUS = inTheUS.find_next('ul').text.split('\n')
+                            print('In the US', iUS, link)
+                            del iUS[0]
+                            del iUS[-1]
+                            drugsFile.write(str(iUS) + '|' + link + '\n')
+                            drugsFile.flush()
+                        except AttributeError:
+                            try:
+                                inCanada = soup.find('b', string='In Canada')
+                                iC = inCanada.find_next('ul').text.split('\n')
+                                print('In Canada', iC, link)
+                                del iC[0]
+                                del iC[-1]
+                                drugsFile.write(str(iC) + '|' + link + '\n')
+                                drugsFile.flush()
+                            except AttributeError:
+                                try:
+                                    name = soup.find('div', attrs={'class': 'contentBox'}).find_next('h1').text
+                                    text = soup.find('div', attrs={'class': 'contentBox'}).find_next('p').text
+                                    drugsFile.write(name + '|' + text + '|' + link + '\n')
+                                except Exception:
+                                    print('Odd Link:', link)
     return drugsInfo
 
 
