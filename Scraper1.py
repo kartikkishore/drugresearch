@@ -277,20 +277,25 @@ def drugs():
     with tqdm(total=len(drugView)) as drugsDotComBar:
         for link in drugView:
             # Sleeping logic
-            sleepCounter += 1
             if sleepCounter % 100 == 0:
                 time.sleep(15)
             if sleepCounter % 500 == 0:
                 time.sleep(30)
             if sleepCounter % 1000 == 0:
                 time.sleep(60)
+            sleepCounter += 1
             drugsDotComBar.update(1)
             # Ignoring natural products
             if 'https://www.drugs.com/npc' in str(link):
                 pass
             else:
                 # Scraping logic
-                webPage = requests.get(link, timeout=100).text
+                try:
+                    webPage = requests.get(link, timeout=100).text
+                except requests.exceptions.ConnectionError:
+                    # Bombarded server - Sleep for sometime now
+                    time.sleep(600)
+                    webPage = requests.get(link, timeout=100).text
                 soup = BeautifulSoup(webPage)
                 try:
                     x = soup.find('p', attrs={'class': 'drug-subtitle'}).text
