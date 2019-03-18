@@ -300,14 +300,14 @@ def drugs():
                     try:
                         brandNamesUS = soup.find('h2', string='Brand Names: U.S.')
                         bUS = brandNamesUS.find_next('ul').text.split('\n')
-                        print('Brand US', bUS, link)
+                        print('Brand US', bUS, link) if DEBUG == True else None
                         drugsFile.write(str(bUS) + '|' + link + '\n')
                         drugsFile.flush()
                     except AttributeError:
                         try:
                             inTheUS = soup.find('b', string='In the U.S.')
                             iUS = inTheUS.find_next('ul').text.split('\n')
-                            print('In the US', iUS, link)
+                            print('In the US', iUS, link) if DEBUG == True else None
                             del iUS[0]
                             del iUS[-1]
                             drugsFile.write(str(iUS) + '|' + link + '\n')
@@ -316,7 +316,7 @@ def drugs():
                             try:
                                 inCanada = soup.find('b', string='In Canada')
                                 iC = inCanada.find_next('ul').text.split('\n')
-                                print('In Canada', iC, link)
+                                print('In Canada', iC, link) if DEBUG == True else None
                                 del iC[0]
                                 del iC[-1]
                                 drugsFile.write(str(iC) + '|' + link + '\n')
