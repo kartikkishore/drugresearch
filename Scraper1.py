@@ -278,11 +278,11 @@ def drugs():
         for link in drugView:
             # Sleeping logic
             sleepCounter += 1
-            if sleepCounter % 100:
+            if sleepCounter % 100 == 0:
                 time.sleep(15)
-            if sleepCounter % 500:
+            if sleepCounter % 500 == 0:
                 time.sleep(30)
-            if sleepCounter % 1000:
+            if sleepCounter % 1000 == 0:
                 time.sleep(60)
             drugsDotComBar.update(1)
             # Ignoring natural products
