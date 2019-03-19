@@ -229,7 +229,7 @@ def fda():
 
 def drugs():
     drugsInfo = drugIndexLinks = drugView = []
-    os.remove('data/drugs/drugs_logger.csv')
+    os.remove('data/drugs/Drugs_com_dump_20Mar19.csv')
 
     chromeOptions = Options()
     chromeOptions.add_experimental_option("detach", True)
@@ -271,8 +271,8 @@ def drugs():
     del drugView[0:390]
 
     drugView = set(drugView)
-    drugsFile = open('data/drugs/drugs_logger.csv', 'a')
-    sleepCounter = 0
+    drugsFile = open('data/drugs/Drugs_com_dump_20Mar19.csv', 'a')
+    sleepCounter = 1
 
     with tqdm(total=len(drugView)) as drugsDotComBar:
         for link in drugView:
@@ -293,9 +293,24 @@ def drugs():
                 try:
                     webPage = requests.get(link, timeout=100).text
                 except requests.exceptions.ConnectionError:
+                    print(str(datetime.datetime.now().strftime('%m-%d-%H-%M')) + ' SSL Connection Error, Sleeping now.')
                     # Bombarded server - Sleep for sometime now
-                    time.sleep(600)
+                    # time.sleep(600)
+                    with tqdm(total=600) as SSLBar:
+                        for i in range(0, 600):
+                            time.sleep(1)
+                            SSLBar.update(1)
                     webPage = requests.get(link, timeout=100).text
+                except requests.exceptions.ReadTimeout:
+                    print(str(datetime.datetime.now().strftime('%m-%d-%H-%M')) + ' RT Connection Error, Sleeping now.')
+                    # Bombarded server - Sleep for sometime now
+                    # time.sleep(800)
+                    with tqdm(total=600) as RTBar:
+                        for i in range(0, 600):
+                            time.sleep(1)
+                            RTBar.update(1)
+                    webPage = requests.get(link, timeout=100).text
+                # Soup it up
                 soup = BeautifulSoup(webPage)
                 try:
                     x = soup.find('p', attrs={'class': 'drug-subtitle'}).text
@@ -330,7 +345,8 @@ def drugs():
                                 try:
                                     name = soup.find('div', attrs={'class': 'contentBox'}).find_next('h1').text
                                     text = soup.find('div', attrs={'class': 'contentBox'}).find_next('p').text
-                                    drugsFile.write(name + '|' + text + '|' + link + '\n')
+                                    drugsFile.write(
+                                        name + '|' + [str(item) for item in text.split('\n')] + '|' + link + '\n')
                                 except Exception:
                                     print('Odd Link:', link)
     return drugsInfo
